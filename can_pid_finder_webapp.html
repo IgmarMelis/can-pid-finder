@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CAN PID Formula Finder</title>
+  <style>
+    :root {
+      --bg: #071218;
+      --panel: #0d1f29;
+      --panel2: #102c3a;
+      --border: #1d5267;
+      --text: #e7fbff;
+      --muted: #8fc5d4;
+      --accent: #35cfff;
+      --ok: #2de389;
+      --warn: #ffd166;
+      --bad: #ff5f6d;
+      --blue: #3a86ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top left, #113345 0, var(--bg) 42%);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(5, 18, 25, 0.9);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    h1 { margin: 0; font-size: 24px; }
+    .subtitle { color: var(--muted); margin-top: 6px; font-size: 14px; }
+    main { padding: 18px 24px 40px; }
+    .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    @media (max-width: 1000px) { .grid, .grid3 { grid-template-columns: 1fr; } }
+    .card {
+      background: linear-gradient(180deg, rgba(16,44,58,.96), rgba(8,25,34,.96));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.25);
+    }
+    .card h2 { margin: 0 0 10px; font-size: 17px; }
+    button, select, input {
+      background: #071a23;
+      border: 1px solid #2b6a82;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    button {
+      cursor: pointer;
+      font-weight: 700;
+    }
+    button.primary { border-color: var(--accent); background: #0c3550; }
+    button.green { border-color: var(--ok); background: #073021; }
+    button.red { border-color: var(--bad); background: #311016; }
+    button:hover { filter: brightness(1.15); }
+    label { color: var(--muted); font-size: 13px; display: block; margin: 8px 0 5px; }
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      background: #06141c;
+      color: var(--text);
+      border: 1px solid #2b6a82;
+      border-radius: 10px;
+      padding: 10px;
+      font-family: Consolas, monospace;
+      resize: vertical;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid rgba(143,197,212,.18); padding: 7px 6px; text-align: left; }
+    th { color: #aeeaff; position: sticky; top: 78px; background: #102c3a; z-index: 2; }
+    .mono { font-family: Consolas, monospace; }
+    .status { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+    .status.ok { color: var(--ok); border-color: var(--ok); }
+    .status.bad { color: var(--bad); border-color: var(--bad); }
+    .bigValue { font-family: Consolas, monospace; font-size: 28px; font-weight: 800; margin: 8px 0; }
+    .small { color: var(--muted); font-size: 12px; }
+    .lockedBox {
+      border: 1px solid #2b6a82;
+      background: rgba(5, 20, 28, .72);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; background:#082d3d; color:#aeeaff; border:1px solid #245a70; margin-right: 4px; }
+    .good { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+  </style>
+</head>
+<body>
+<header>
+  <div class="row" style="justify-content: space-between;">
+    <div>
+      <h1>CAN PID Formula Finder</h1>
+      <div class="subtitle">Raw CAN serial input → choose ID → test formulas → lock live values</div>
+    </div>
+    <div class="row">
+      <span id="serialStatus" class="status bad">Disconnected</span>
+      <span class="status">Frames: <b id="frameCount">0</b></span>
+      <span class="status">IDs: <b id="idCount">0</b></span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <div class="row">
+      <label style="margin:0;">USB PortCOM baud
+        <select id="baud">
+          <option>115200</option>
+          <option>230400</option>
+          <option>500000</option>
+          <option>1000000</option>
+        </select>
+      </label>
+      <button id="connectBtn" class="primary">Connect USB Serial</button>
+      <button id="disconnectBtn">Disconnect</button>
+      <button id="clearBtn" class="red">Clear</button>
+      <button id="demoBtn">Demo data</button>
+    </div>
+  </section>
+
+  <section class="grid3" style="margin-top:14px;">
+    <div class="lockedBox">
+      <div class="small">LOCKED RPM</div>
+      <div id="lockedRPM" class="bigValue">---</div>
+      <div id="lockedRPMMeta" class="small">not selected</div>
+    </div>
+    <div class="lockedBox">
+      <div class="small">LOCKED COOLANT</div>
+      <div id="lockedCOOLANT" class="bigValue">---</div>
+      <div id="lockedCOOLANTMeta" class="small">not selected</div>
+    </div>
+    <div class="lockedBox">
+      <div class="small">LOCKED VOLTAGE</div>
+      <div id="lockedVOLTAGE" class="bigValue">---</div>
+      <div id="lockedVOLTAGEMeta" class="small">not selected</div>
+    </div>
+    <div class="lockedBox">
+      <div class="small">LOCKED SPEED</div>
+      <div id="lockedSPEED" class="bigValue">---</div>
+      <div id="lockedSPEEDMeta" class="small">not selected</div>
+    </div>
+    <div class="lockedBox">
+      <div class="small">LOCKED MIL</div>
+      <div id="lockedMIL" class="bigValue">---</div>
+      <div id="lockedMILMeta" class="small">not selected</div>
+    </div>
+    <div class="lockedBox">
+      <div class="small">LOCKED OIL / STATUS</div>
+      <div id="lockedSTATUS" class="bigValue">---</div>
+      <div id="lockedSTATUSMeta" class="small">not selected</div>
+    </div>
+  </section>
+
+  <section class="grid" style="margin-top:14px;">
+    <div class="card">
+      <h2>1) Select ID and test formula</h2>
+      <div class="grid">
+        <div>
+          <label>CAN ID</label>
+          <select id="idSelect"></select>
+        </div>
+        <div>
+          <label>Target value</label>
+          <select id="targetSelect">
+            <option value="RPM">RPM</option>
+            <option value="COOLANT">COOLANT</option>
+            <option value="VOLTAGE">VOLTAGE</option>
+            <option value="SPEED">SPEED</option>
+            <option value="MIL">MIL</option>
+            <option value="STATUS">OIL / STATUS</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid">
+        <div>
+          <label>Formula</label>
+          <select id="formulaSelect"></select>
+        </div>
+        <div>
+          <label>Byte / Bit</label>
+          <select id="byteSelect"></select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button id="lockBtn" class="green">Lock this value</button>
+        <button id="unlockBtn">Unlock selected target</button>
+      </div>
+      <div style="margin-top:12px;">
+        <div class="small">Live result from selected formula</div>
+        <div id="testValue" class="bigValue">---</div>
+        <div id="testMeta" class="small">No data yet</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2) Paste / replay raw log</h2>
+      <div class="small">Accepted raw format: <span class="mono">308,8,02,00,00,00,00,00,00,00</span> or <span class="mono">0x308 8 02 00 ...</span></div>
+      <textarea id="pasteBox" placeholder="Paste raw CAN lines here..."></textarea>
+      <div class="row" style="margin-top:10px;">
+        <button id="parseBtn" class="primary">Parse pasted log</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:14px;">
+    <h2>3) Live IDs</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Count</th>
+          <th>Hz approx</th>
+          <th>Last data</th>
+          <th>B0</th><th>B1</th><th>B2</th><th>B3</th><th>B4</th><th>B5</th><th>B6</th><th>B7</th>
+        </tr>
+      </thead>
+      <tbody id="idTable"></tbody>
+    </table>
+  </section>
+
+  <section class="card" style="margin-top:14px;">
+    <h2>4) Formula scanner for selected ID</h2>
+    <div class="small">Use this list to quickly see many possible interpretations from the same ID."I will update this"</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Target</th>
+          <th>Formula</th>
+          <th>Byte/bit</th>
+          <th>Value</th>
+          <th>Quick check</th>
+        </tr>
+      </thead>
+      <tbody id="scanTable"></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+let port = null;
+let reader = null;
+let keepReading = false;
+let rxBuffer = "";
+let framesTotal = 0;
+let ids = new Map();
+let locks = {};
+let lastRender = 0;
+
+const $ = (id) => document.getElementById(id);
+
+const FORMULAS = [
+  { name:"RPM u16 BE / 4", target:"RPM", bytes:2, fn:(b,i)=>u16be(b,i)/4, unit:"rpm", ok:v=>v>=0&&v<=9000 },
+  { name:"RPM u16 LE / 4", target:"RPM", bytes:2, fn:(b,i)=>u16le(b,i)/4, unit:"rpm", ok:v=>v>=0&&v<=9000 },
+  { name:"RPM u16 BE / 8", target:"RPM", bytes:2, fn:(b,i)=>u16be(b,i)/8, unit:"rpm", ok:v=>v>=0&&v<=9000 },
+  { name:"RPM u16 LE / 8", target:"RPM", bytes:2, fn:(b,i)=>u16le(b,i)/8, unit:"rpm", ok:v=>v>=0&&v<=9000 },
+  { name:"RPM u16 BE", target:"RPM", bytes:2, fn:(b,i)=>u16be(b,i), unit:"rpm", ok:v=>v>=0&&v<=9000 },
+  { name:"RPM u16 LE", target:"RPM", bytes:2, fn:(b,i)=>u16le(b,i), unit:"rpm", ok:v=>v>=0&&v<=9000 },
+
+  { name:"Coolant B - 40", target:"COOLANT", bytes:1, fn:(b,i)=>b[i]-40, unit:"°C", ok:v=>v>=-40&&v<=140 },
+  { name:"Coolant B - 48", target:"COOLANT", bytes:1, fn:(b,i)=>b[i]-48, unit:"°C", ok:v=>v>=-40&&v<=140 },
+  { name:"Coolant B", target:"COOLANT", bytes:1, fn:(b,i)=>b[i], unit:"°C", ok:v=>v>=-40&&v<=140 },
+  { name:"Coolant signed int8", target:"COOLANT", bytes:1, fn:(b,i)=>s8(b[i]), unit:"°C", ok:v=>v>=-40&&v<=140 },
+
+  { name:"Voltage B / 10", target:"VOLTAGE", bytes:1, fn:(b,i)=>b[i]/10, unit:"V", ok:v=>v>=9&&v<=16 },
+  { name:"Voltage B / 20", target:"VOLTAGE", bytes:1, fn:(b,i)=>b[i]/20, unit:"V", ok:v=>v>=9&&v<=16 },
+  { name:"Voltage B / 16", target:"VOLTAGE", bytes:1, fn:(b,i)=>b[i]/16, unit:"V", ok:v=>v>=9&&v<=16 },
+  { name:"Voltage u16 BE / 100", target:"VOLTAGE", bytes:2, fn:(b,i)=>u16be(b,i)/100, unit:"V", ok:v=>v>=9&&v<=16 },
+  { name:"Voltage u16 LE / 100", target:"VOLTAGE", bytes:2, fn:(b,i)=>u16le(b,i)/100, unit:"V", ok:v=>v>=9&&v<=16 },
+  { name:"Voltage u16 BE / 1000", target:"VOLTAGE", bytes:2, fn:(b,i)=>u16be(b,i)/1000, unit:"V", ok:v=>v>=9&&v<=16 },
+  { name:"Voltage u16 LE / 1000", target:"VOLTAGE", bytes:2, fn:(b,i)=>u16le(b,i)/1000, unit:"V", ok:v=>v>=9&&v<=16 },
+
+  { name:"Speed B", target:"SPEED", bytes:1, fn:(b,i)=>b[i], unit:"km/h", ok:v=>v>=0&&v<=300 },
+  { name:"Speed B / 2", target:"SPEED", bytes:1, fn:(b,i)=>b[i]/2, unit:"km/h", ok:v=>v>=0&&v<=300 },
+  { name:"Speed u16 BE / 100", target:"SPEED", bytes:2, fn:(b,i)=>u16be(b,i)/100, unit:"km/h", ok:v=>v>=0&&v<=300 },
+  { name:"Speed u16 LE / 100", target:"SPEED", bytes:2, fn:(b,i)=>u16le(b,i)/100, unit:"km/h", ok:v=>v>=0&&v<=300 },
+  { name:"Speed u16 BE / 256", target:"SPEED", bytes:2, fn:(b,i)=>u16be(b,i)/256, unit:"km/h", ok:v=>v>=0&&v<=300 },
+  { name:"Speed u16 LE / 256", target:"SPEED", bytes:2, fn:(b,i)=>u16le(b,i)/256, unit:"km/h", ok:v=>v>=0&&v<=300 },
+
+  { name:"Bit = ON when 1", target:"MIL", bytes:0, bit:true, fn:(b,i,bit)=>((b[i]>>bit)&1), unit:"", ok:v=>v===0||v===1 },
+  { name:"Bit = ON when 0", target:"MIL", bytes:0, bit:true, fn:(b,i,bit)=>(((b[i]>>bit)&1)?0:1), unit:"", ok:v=>v===0||v===1 },
+  { name:"Bit = ON when 1", target:"STATUS", bytes:0, bit:true, fn:(b,i,bit)=>((b[i]>>bit)&1), unit:"", ok:v=>v===0||v===1 },
+  { name:"Bit = ON when 0", target:"STATUS", bytes:0, bit:true, fn:(b,i,bit)=>(((b[i]>>bit)&1)?0:1), unit:"", ok:v=>v===0||v===1 },
+
+  { name:"Raw byte", target:"STATUS", bytes:1, fn:(b,i)=>b[i], unit:"", ok:v=>v>=0&&v<=255 },
+  { name:"Raw u16 BE", target:"STATUS", bytes:2, fn:(b,i)=>u16be(b,i), unit:"", ok:v=>v>=0&&v<=65535 },
+  { name:"Raw u16 LE", target:"STATUS", bytes:2, fn:(b,i)=>u16le(b,i), unit:"", ok:v=>v>=0&&v<=65535 }
+];
+
+function u16be(b,i){ return ((b[i]<<8) | b[i+1]) >>> 0; }
+function u16le(b,i){ return ((b[i+1]<<8) | b[i]) >>> 0; }
+function s8(x){ return x > 127 ? x - 256 : x; }
+function hex(n, width=2){ return Number(n).toString(16).toUpperCase().padStart(width,"0"); }
+function idHex(id){ return "0x" + Number(id).toString(16).toUpperCase(); }
+
+function populateFormulaSelect() {
+  const t = $("targetSelect").value;
+  const fs = $("formulaSelect");
+  fs.innerHTML = "";
+  FORMULAS.filter(f => f.target === t).forEach((f, idx) => {
+    const opt = document.createElement("option");
+    opt.value = FORMULAS.indexOf(f);
+    opt.textContent = f.name;
+    fs.appendChild(opt);
+  });
+  populateByteSelect();
+}
+
+function populateByteSelect() {
+  const f = FORMULAS[Number($("formulaSelect").value)] || FORMULAS[0];
+  const bs = $("byteSelect");
+  bs.innerHTML = "";
+  if (f.bit) {
+    for (let byte=0; byte<8; byte++) {
+      for (let bit=0; bit<8; bit++) {
+        const opt = document.createElement("option");
+        opt.value = `${byte}:${bit}`;
+        opt.textContent = `B${byte} bit ${bit}`;
+        bs.appendChild(opt);
+      }
+    }
+  } else {
+    const maxStart = Math.max(0, 8 - f.bytes);
+    for (let byte=0; byte<=maxStart; byte++) {
+      const opt = document.createElement("option");
+      opt.value = `${byte}:0`;
+      opt.textContent = f.bytes === 1 ? `B${byte}` : `B${byte}-B${byte+f.bytes-1}`;
+      bs.appendChild(opt);
+    }
+  }
+}
+
+function parseFrameLine(line) {
+  line = line.trim();
+  if (!line) return null;
+  line = line.replace(/FRAME:/i, "").replace(/,/g, " ").replace(/;/g, " ");
+  const parts = line.split(/\s+/).filter(Boolean);
+  if (parts.length < 3) return null;
+
+  let idTxt = parts[0];
+  let id = parseInt(idTxt, idTxt.toLowerCase().startsWith("0x") ? 16 : 16);
+  if (Number.isNaN(id)) id = parseInt(idTxt, 10);
+  if (Number.isNaN(id)) return null;
+
+  let dlc = parseInt(parts[1], 10);
+  let start = 2;
+  if (Number.isNaN(dlc) || dlc < 0 || dlc > 8) {
+    dlc = Math.min(8, parts.length - 1);
+    start = 1;
+  }
+
+  let data = [];
+  for (let i=0; i<dlc && start+i<parts.length; i++) {
+    let p = parts[start+i].replace(/^0x/i, "");
+    let v = parseInt(p, 16);
+    if (Number.isNaN(v) || v < 0 || v > 255) return null;
+    data.push(v);
+  }
+  while (data.length < 8) data.push(0);
+  return { id, dlc, data, time: performance.now() };
+}
+
+function addFrame(frame) {
+  framesTotal++;
+  let rec = ids.get(frame.id);
+  if (!rec) {
+    rec = { id: frame.id, count: 0, firstTime: frame.time, lastTime: frame.time, data: frame.data, dlc: frame.dlc };
+    ids.set(frame.id, rec);
+  }
+  rec.count++;
+  rec.lastTime = frame.time;
+  rec.data = frame.data;
+  rec.dlc = frame.dlc;
+
+  updateLocks();
+  const now = performance.now();
+  if (now - lastRender > 120) {
+    renderAll();
+    lastRender = now;
+  }
+}
+
+function formatValue(v, unit) {
+  if (typeof v !== "number" || !Number.isFinite(v)) return "---";
+  const decimals = Math.abs(v) < 20 && unit !== "rpm" && unit !== "km/h" ? 2 : (Number.isInteger(v) ? 0 : 1);
+  return `${v.toFixed(decimals)}${unit ? " " + unit : ""}`;
+}
+
+function evalSelection() {
+  const id = parseInt($("idSelect").value, 10);
+  const rec = ids.get(id);
+  const f = FORMULAS[Number($("formulaSelect").value)];
+  const [byte, bit] = $("byteSelect").value.split(":").map(Number);
+  if (!rec || !f) return null;
+  if (byte >= rec.dlc) return null;
+  if (!f.bit && byte + f.bytes > rec.dlc) return null;
+  const val = f.fn(rec.data, byte, bit);
+  return { id, rec, f, byte, bit, val };
+}
+
+function updateTestValue() {
+  const r = evalSelection();
+  if (!r) {
+    $("testValue").textContent = "---";
+    $("testMeta").textContent = "No valid data for this selection";
+    return;
+  }
+  $("testValue").textContent = formatValue(r.val, r.f.unit);
+  $("testMeta").textContent = `${idHex(r.id)} | ${r.f.name} | ${r.f.bit ? `B${r.byte} bit ${r.bit}` : `B${r.byte}`}`;
+  $("testValue").className = "bigValue " + (r.f.ok(r.val) ? "good" : "warn");
+}
+
+function lockCurrent() {
+  const r = evalSelection();
+  if (!r) return;
+  const target = $("targetSelect").value;
+  locks[target] = { id:r.id, formulaIndex:Number($("formulaSelect").value), byte:r.byte, bit:r.bit };
+  updateLocks();
+  renderLockedMeta();
+}
+
+function unlockCurrent() {
+  const target = $("targetSelect").value;
+  delete locks[target];
+  renderLockedMeta();
+  updateLocks();
+}
+
+function updateLocks() {
+  for (const target of ["RPM","COOLANT","VOLTAGE","SPEED","MIL","STATUS"]) {
+    const lock = locks[target];
+    const valueEl = $("locked" + target);
+    if (!valueEl) continue;
+    if (!lock) {
+      valueEl.textContent = "---";
+      continue;
+    }
+    const rec = ids.get(lock.id);
+    const f = FORMULAS[lock.formulaIndex];
+    if (!rec || !f) { valueEl.textContent = "---"; continue; }
+    let val = f.fn(rec.data, lock.byte, lock.bit);
+    if (target === "MIL" || target === "STATUS") {
+      if (f.bit) valueEl.textContent = val ? "ON" : "OFF";
+      else valueEl.textContent = formatValue(val, f.unit);
+    } else {
+      valueEl.textContent = formatValue(val, f.unit);
+    }
+    valueEl.className = "bigValue " + (f.ok(val) ? "good" : "warn");
+  }
+}
+
+function renderLockedMeta() {
+  for (const target of ["RPM","COOLANT","VOLTAGE","SPEED","MIL","STATUS"]) {
+    const meta = $("locked" + target + "Meta");
+    if (!meta) continue;
+    const lock = locks[target];
+    if (!lock) { meta.textContent = "not selected"; continue; }
+    const f = FORMULAS[lock.formulaIndex];
+    meta.textContent = `${idHex(lock.id)} | ${f.name} | ${f.bit ? `B${lock.byte} bit ${lock.bit}` : `B${lock.byte}`}`;
+  }
+}
+
+function renderIdSelect() {
+  const sel = $("idSelect");
+  const old = sel.value;
+  const sorted = [...ids.keys()].sort((a,b)=>a-b);
+  sel.innerHTML = "";
+  sorted.forEach(id => {
+    const opt = document.createElement("option");
+    opt.value = String(id);
+    opt.textContent = idHex(id);
+    sel.appendChild(opt);
+  });
+  if (sorted.includes(parseInt(old,10))) sel.value = old;
+}
+
+function renderIdTable() {
+  const tbody = $("idTable");
+  tbody.innerHTML = "";
+  const sorted = [...ids.values()].sort((a,b)=>a.id-b.id);
+  for (const rec of sorted) {
+    const dt = Math.max(0.001, (rec.lastTime - rec.firstTime) / 1000);
+    const hz = rec.count > 1 ? ((rec.count - 1) / dt).toFixed(1) : "---";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="mono">${idHex(rec.id)}</td><td>${rec.count}</td><td>${hz}</td><td class="mono">${rec.data.slice(0,rec.dlc).map(x=>hex(x)).join(" ")}</td>` +
+      rec.data.map(x=>`<td class="mono">${hex(x)}</td>`).join("");
+    tbody.appendChild(tr);
+  }
+}
+
+function renderScanTable() {
+  const tbody = $("scanTable");
+  tbody.innerHTML = "";
+  const id = parseInt($("idSelect").value, 10);
+  const rec = ids.get(id);
+  if (!rec) return;
+  for (let fi=0; fi<FORMULAS.length; fi++) {
+    const f = FORMULAS[fi];
+    if (f.bit) {
+      for (let byte=0; byte<Math.min(8,rec.dlc); byte++) {
+        for (let bit=0; bit<8; bit++) {
+          const v = f.fn(rec.data, byte, bit);
+          addScanRow(tbody, f, byte, bit, v);
+        }
+      }
+    } else {
+      for (let byte=0; byte<=rec.dlc - f.bytes; byte++) {
+        const v = f.fn(rec.data, byte, 0);
+        addScanRow(tbody, f, byte, null, v);
+      }
+    }
+  }
+}
+
+function addScanRow(tbody, f, byte, bit, val) {
+  const ok = f.ok(val);
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td>${f.target}</td><td>${f.name}</td><td>${bit === null ? `B${byte}` : `B${byte} bit ${bit}`}</td><td class="mono">${formatValue(val, f.unit)}</td><td class="${ok ? "good" : "warn"}">${ok ? "possible" : "outside range"}</td>`;
+  tbody.appendChild(tr);
+}
+
+function renderAll() {
+  $("frameCount").textContent = framesTotal;
+  $("idCount").textContent = ids.size;
+  renderIdSelect();
+  renderIdTable();
+  updateTestValue();
+  renderScanTable();
+}
+
+async function connectSerial() {
+  if (!('serial' in navigator)) {
+    alert('Web Serial is not available. Use Chrome or Edge.');
+    return;
+  }
+  port = await navigator.serial.requestPort();
+  await port.open({ baudRate: Number($("baud").value) });
+  keepReading = true;
+  $("serialStatus").textContent = "Connected";
+  $("serialStatus").className = "status ok";
+  readLoop();
+}
+
+async function readLoop() {
+  const decoder = new TextDecoderStream();
+  port.readable.pipeTo(decoder.writable).catch(() => {});
+  reader = decoder.readable.getReader();
+  try {
+    while (keepReading) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) feedText(value);
+    }
+  } catch (e) {}
+}
+
+function feedText(text) {
+  rxBuffer += text;
+  let lines = rxBuffer.split(/\r?\n/);
+  rxBuffer = lines.pop() || "";
+  for (const line of lines) {
+    const f = parseFrameLine(line);
+    if (f) addFrame(f);
+  }
+}
+
+async function disconnectSerial() {
+  keepReading = false;
+  try { if (reader) await reader.cancel(); } catch(e) {}
+  try { if (port) await port.close(); } catch(e) {}
+  port = null;
+  reader = null;
+  $("serialStatus").textContent = "Disconnected";
+  $("serialStatus").className = "status bad";
+}
+
+function clearAll() {
+  framesTotal = 0;
+  ids.clear();
+  rxBuffer = "";
+  $("idSelect").innerHTML = "";
+  renderAll();
+  updateLocks();
+}
+
+function parsePasted() {
+  const lines = $("pasteBox").value.split(/\r?\n/);
+  for (const line of lines) {
+    const f = parseFrameLine(line);
+    if (f) addFrame(f);
+  }
+  renderAll();
+}
+
+function demoData() {
+  const demo = [
+    "308,8,08,07,00,00,00,00,00,00",
+    "608,8,7D,00,00,00,00,00,00,00",
+    "218,8,00,00,F6,04,00,00,00,00",
+    "200,8,00,3C,00,00,00,00,00,00",
+    "408,8,00,00,00,00,00,00,00,01"
+  ];
+  let t = 0;
+  const timer = setInterval(()=>{
+    const line = demo[t % demo.length];
+    const f = parseFrameLine(line);
+    if (f) addFrame(f);
+    t++;
+    if (t > 80) clearInterval(timer);
+  }, 30);
+}
+
+$("connectBtn").onclick = connectSerial;
+$("disconnectBtn").onclick = disconnectSerial;
+$("clearBtn").onclick = clearAll;
+$("parseBtn").onclick = parsePasted;
+$("demoBtn").onclick = demoData;
+$("targetSelect").onchange = populateFormulaSelect;
+$("formulaSelect").onchange = () => { populateByteSelect(); updateTestValue(); renderScanTable(); };
+$("byteSelect").onchange = updateTestValue;
+$("idSelect").onchange = () => { updateTestValue(); renderScanTable(); };
+$("lockBtn").onclick = lockCurrent;
+$("unlockBtn").onclick = unlockCurrent;
+
+populateFormulaSelect();
+renderLockedMeta();
+renderAll();
+</script>
+</body>
+</html>
