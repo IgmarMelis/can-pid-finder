@@ -2,7 +2,7 @@
 
 **Arduino-based CAN Bus reverse engineering tool to extract vehicle PIDs (RPM, Temperature, Speed, etc.)**
 
-[![ko-fi](https://ko-fi.com/img/githubbutton-sm.svg)](https://ko-fi.com/pss)
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/pss)
 
 ---
 
@@ -35,7 +35,7 @@ This project helps you reverse engineer CAN Bus data from vehicles to find the c
 - Arduino Uno/Nano
 - MCP2515 CAN Bus Module (8MHz crystal)
 - Jumper wires
-- Vehicle with OBD2 port
+- Vehicle with OBD2 port or Can wires in the Instrument cluster connector.
 
 ### Software:
 - Arduino IDE (for uploading sketch)
@@ -44,3 +44,17 @@ This project helps you reverse engineer CAN Bus data from vehicles to find the c
 ## 🚀 Quick Start
 
 ### 1. Hardware Setup
+
+#### MCP2515 to Arduino Connections:
+
+| MCP2515 Pin | Arduino Pin | Description |
+|-------------|-------------|-------------|
+| **VCC** | **5V** | Power supply |
+| **GND** | **GND** | Ground |
+| **CS** | **D10** | Chip Select |
+| **SO** | **D12** | MISO (SPI) |
+| **SI** | **D11** | MOSI (SPI) |
+| **SCK** | **D13** | Clock (SPI) |
+| **INT** | **D2** | Interrupt (optional) |
+
+#### Wiring Diagram:
